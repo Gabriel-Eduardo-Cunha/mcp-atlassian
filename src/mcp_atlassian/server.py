@@ -978,6 +978,62 @@ async def list_tools() -> list[Tool]:
                         },
                     ),
                     Tool(
+                    name="jira_create_issue_in_my_way",
+                    description="Create a new Jira issue linke cunha likes to create. Making all the necessary standards and following my template",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "project_key": {
+                                "type": "string",
+                                "description": "SCRUM is the main project, use it by default, but if the user says something different, use that instead.",
+                            },
+                            "summary": {
+                                "type": "string",
+                                "description": "Summary/title of the issue. In Ambisis we use this template: "
+                                "{ Module } -> { optional secondary module / related page } - { the task objective }",
+
+                            },
+                            "issue_type": {
+                                "type": "string",
+                                "description": (
+                                    "Issue type (e.g. 'Task', 'Bug'). "
+                                ),
+                            },
+                            "userHistories": {
+                                "type": "array",
+                                "description": "Lista de Histórias de usuário, você pode colocar 1 ou mais história de usuário, incluindo todos os pontos de vista quando aplicável, exemplo: \"Usuário\", \"Administrador\", \"Analista de dados administrador\", \"Desenvolvedor\", etc. O modelo da história de usuário é bem simples: Eu como [ator] quero que [o que o usuário quer] para que [o motivo do que ele quer]",
+                                "default": "[]",
+                            },
+                            "acceptationCriteria": {
+                                "type": "array",
+                                "description": "Aqui deve ter uma lista de todos os critérios de aceitação que precisam ser atingidos para a tarefa ser aceita e considerada concluída, essa lista deve servir como base para o dev concluir a tarefa. Considere regras de negócio, detalhes técnicos, testes a se considerar, etc.",
+                                "default": "[]",
+                            },
+                            "taskLocation": {
+                                "type": "string",
+                                "description": "Aqui deve ser explicado em qual ou quais telas as funcionalidades serão adicionadas, e um breve passo a passo de como chegar na tela",
+                                "default": "",
+                            },
+                            "assignee": {
+                                "type": "string",
+                                "description": "Assignee of the ticket (accountID, full name or e-mail)",
+                            },
+                            "additional_fields": {
+                                "type": "string",
+                                "description": "Optional JSON string of additional fields to set. "
+                                "Examples:\n"
+                                '- Set priority: {"priority": {"name": "High"}}\n'
+                                '- Add labels: {"labels": ["frontend", "urgent"]}\n'
+                                '- Add components: {"components": [{"name": "UI"}]}\n'
+                                '- Link to parent (for any issue type): {"parent": "PROJ-123"}\n'
+                                '- Custom fields: {"customfield_10010": "value"}',
+                                "default": "{}",
+                            },
+                        },
+                        "required": ["project_key", "summary", "issue_type", "userHistories", "acceptationCriteria", "taskLocation"],
+                    },
+                ),
+                    Tool(
                         name="jira_update_issue",
                         description="Update an existing Jira issue including changing status, adding Epic links, updating fields, etc.",
                         inputSchema={
@@ -1822,6 +1878,55 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
                 TextContent(
                     type="text",
                     text=json.dumps(response, indent=2, ensure_ascii=False),
+                )
+            ]
+        
+        elif name == "jira_create_issue_in_my_way":
+            if not ctx or not ctx.jira:
+                raise ValueError("Jira is not configured.")
+
+            # Extract required arguments
+            project_key = arguments.get("project_key")
+            summary = arguments.get("summary")
+            issue_type = arguments.get("issue_type")
+
+            userHistories = arguments.get("userHistories")
+            acceptationCriteria = arguments.get("acceptationCriteria")
+            taskLocation = arguments.get("taskLocation")
+
+            # Extract optional arguments
+            assignee = arguments.get("assignee")
+
+            # Parse additional fields
+            additional_fields = {}
+            if arguments.get("additional_fields"):
+                try:
+                    additional_fields = json.loads(arguments.get("additional_fields"))
+                except json.JSONDecodeError:
+                    raise ValueError("Invalid JSON in additional_fields")
+
+            # Create the issue
+            issue = ctx.jira.create_issue(
+                project_key=project_key,
+                summary=summary,
+                issue_type=issue_type,
+                description="h1. DETALHAMENTO:\n"
+                f"{"\n".join([f" {{panel:bgColor=#eae6ff}}{userStory}{{panel}}" for userStory in userHistories])}\n"
+                "h1. Critérios de aceitação:\n"
+                f"{"\n".join([f"{{panel:bgColor=#ffebe6}}{acceptation}{{panel}}" for acceptation in acceptationCriteria])}"
+                "\n-----------------------------------------------\n"
+                "h1. LOCAL/LUGAR DA TASK:\n"
+                f"{{panel:bgColor=#deebff}}{taskLocation}{{panel}}",
+                assignee=assignee,
+                **additional_fields,
+            )
+
+            result = issue.to_simplified_dict()
+
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Issue created successfully:\n{json.dumps(result, indent=2, ensure_ascii=False)}",
                 )
             ]
 
